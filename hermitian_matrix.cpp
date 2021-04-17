@@ -18,7 +18,15 @@ int main(){
         for(int j=0; j<n; j++){
             a = (double)rand()/RAND_MAX;
             b = (double)rand()/RAND_MAX;
-            matrix[i][j] = complex<double>(a, b);
+            if(i < j){
+                matrix[i][j] = complex<double>(a, b);
+            }
+            else if(i > j){
+                matrix[i][j] = conj(matrix[j][i]);
+            }
+            else if(i == j){
+                matrix[i][j] = complex<double>(a, 0);
+            }
         }
     }
 
@@ -31,3 +39,4 @@ int main(){
 
     return 0;
 }
+
