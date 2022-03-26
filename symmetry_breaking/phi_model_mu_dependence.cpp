@@ -1,4 +1,5 @@
 #include<iostream>
+#include<iomanip>
 #include<cmath>
 #include<complex>
 #include<fstream>
@@ -6,10 +7,10 @@
 
 using namespace std;
 
-const int N = 5; //size of the matrices
-const int ntau = 10; //final 'time step' in the leap frog method
+const int N = 10; //size of the matrices
+const int ntau = 8; //final 'time step' in the leap frog method
 const int niter = 5000; //sample size
-const double dtau = 0.1; //step size in the leap frog method
+const double dtau = 0.06375; //step size in the leap frog method
 double mu_squared;
 
 int box_muller(double& p, double& q){
@@ -34,7 +35,7 @@ double action(const complex<double> phi[N][N], double mu_squared){
     double action = 0;
     //our action has a mu_squared term multiplied to it
     for(int i=0; i<N; i++){
-        action += real(0.5*mu_squared*phi2[i][i]); //calculates the trace of phi squared matrix
+        action += mu_squared*real(0.5*phi2[i][i]); //calculates the trace of phi squared matrix
     }
     for(int i=0; i<N; i++){
         for(int j=0; j<N; j++){
@@ -59,15 +60,10 @@ double phi2value(const complex<double> phi[N][N]){
     for(int i=0; i<N; i++){
         phi2value += real(0.5*phi2[i][i]); //trace of phi^2 matrix without the mu_squared term
     }
-    /*for(int i=0; i<N; i++){
-        for(int j=0; j<N; j++){
-            phi2value += 0.25*real(phi2[i][j]*phi2[j][i]); //calculates the trace of phi quartic matrix and adds trace of phi squared matrix
-        }
-    }*/
-    return phi2value*((double)N);
+    return phi2value;
 }
 
-double hamiltonian(const complex<double> phi[N][N],const complex<double> P[N][N]){
+double hamiltonian(const complex<double> phi[N][N],const complex<double> P[N][N], double mu_squared){
     double hmltn;
     hmltn = action(phi, mu_squared);
     for(int i=0; i<N; i++){
@@ -78,7 +74,7 @@ double hamiltonian(const complex<double> phi[N][N],const complex<double> P[N][N]
     return hmltn;
 }
 
-int force(complex<double> (&delh)[N][N], const complex<double> phi[N][N]){
+int force(complex<double> (&delh)[N][N], const complex<double> phi[N][N], double mu_squared){
     //referenced argument, the derivative of the hamiltonian to be calculated in this function
     complex<double> phi2[N][N], phi3[N][N];
     // the derivative is phi + phi^3 as dH/dx = dS/dx
@@ -104,13 +100,13 @@ int force(complex<double> (&delh)[N][N], const complex<double> phi[N][N]){
     }
     for(int i=0; i<N; i++){
         for(int j=0; j<N; j++){
-            delh[i][j] = (phi[i][j] + phi3[i][j])*((double)N); //we add up the terms for the derivative matrix
+            delh[i][j] = (mu_squared*phi[i][j] + phi3[i][j])*((double)N); //we add up the terms for the derivative matrix
         }
     }
     return 0;
 }
 
-int Molecular_Dynamics(complex<double> (&phi)[N][N], double& hmltn_i, double& hmltn_f, int ntau){
+int Molecular_Dynamics(complex<double> (&phi)[N][N], double& hmltn_i, double& hmltn_f, int ntau, double mu_squared){
     complex<double> P[N][N];
     complex<double> delh[N][N];
     double r1,r2;
@@ -125,7 +121,7 @@ int Molecular_Dynamics(complex<double> (&phi)[N][N], double& hmltn_i, double& hm
         box_muller(r1, r2);
         P[i][i] = complex<double>(r1, 0.0);
     }
-    hmltn_i = hamiltonian(phi, P); //initial hamiltonian before leap frog method
+    hmltn_i = hamiltonian(phi, P, mu_squared); //initial hamiltonian before leap frog method
     //now we update our phi and momentum matrices using leap frog method which in turn updates our hamiltonian
     for(int i=0; i<N; i++){
         for(int j=0; j<N; j++){
@@ -133,7 +129,7 @@ int Molecular_Dynamics(complex<double> (&phi)[N][N], double& hmltn_i, double& hm
         }
     }
     for(int step=1; step<ntau; step++){
-        force(delh, phi); //function called to use the derivative of the hamiltonian below
+        force(delh, phi, mu_squared); //function called to use the derivative of the hamiltonian below
         for(int i=0; i<N; i++){
             for(int j=0; j<N; j++){
                 P[i][j] = P[i][j] - delh[i][j]*dtau; //intermediate steps of the leap frog method
@@ -141,14 +137,14 @@ int Molecular_Dynamics(complex<double> (&phi)[N][N], double& hmltn_i, double& hm
             }
         }
     }
-    force(delh, phi);
+    force(delh, phi, mu_squared);
     for(int i=0; i<N; i++){
         for(int j=0; j<N; j++){
             P[i][j] = P[i][j] - delh[i][j]*dtau; //final step of the leap frog method
             phi[i][j] += P[i][j]*0.5*dtau;
         }
     }
-    hmltn_f = hamiltonian(phi,P); //final hamiltonian
+    hmltn_f = hamiltonian(phi, P, mu_squared); //final hamiltonian
     return 0;
 }
 
@@ -184,20 +180,21 @@ double jackknife(int iter, double sample[]){
 }
 
 int main(){
-    ofstream fout("phi_model_mu_dependence.txt");
+    ofstream fout("phi_model_mu_dependence_5.txt");
+    ofstream file("test.txt");
     complex<double> phi[N][N];
     complex<double> backup_phi[N][N];
     double hmltn_i, hmltn_f, metropolis;
-    double sample[niter];
+    double sample[niter] = {0.0};
     srand((unsigned)time(NULL));
-    for(int i=0; i<N; i++){
-        for(int j=0; j<N; j++){
-            phi[i][j] = complex<double>(0.0, 0.0); //initializing the phi matrix
-        }
-    }
     int naccept = 0;
     double sum = 0;
-    for(mu_squared=-10.0; mu_squared<=10.0; mu_squared=mu_squared+.25){
+    for(mu_squared=-5.0; mu_squared<=1.0; mu_squared=mu_squared+.1){
+        for(int i=0; i<N; i++){
+            for(int j=0; j<N; j++){
+                phi[i][j] = complex<double>(0.0, 0.0); //initializing the phi matrix
+            }
+        }
         for(int iter=0; iter<niter; iter++){
             //we start a loop with increasing sample size
             for(int i=0; i<N; i++){
@@ -205,8 +202,8 @@ int main(){
                     backup_phi[i][j] = phi[i][j]; //initializing the matrix which will hold the same value of the phi matrix if it fails the metropolis test
                 }
             }
-            Molecular_Dynamics(phi, hmltn_i, hmltn_f, ntau);
-            metropolis = (double)rand()/RAND_MAX;
+            Molecular_Dynamics(phi, hmltn_i, hmltn_f, ntau, mu_squared);
+            metropolis = ((double)rand()/RAND_MAX);
             if(exp(hmltn_i-hmltn_f) > metropolis){
                 naccept=naccept+1; //metropolis test, the new matrix is accepted
             }
@@ -217,15 +214,25 @@ int main(){
                     }
                 }
             }
+            if(phi2value(phi) > 20000 || phi2value(phi) < 0){
+                sum += 0;
+            }
+            else{
             sum += phi2value(phi); //trace of just the phi^2 term
+            }
             sample[iter] = sum; //the trace is stored in the sample array to be jackknifed. the size of the array increases with each iteration
             if(iter == niter-1){
                 //we take the sample with maximum data points and calculate the error with jackknife function
                 //we plot mu_squared vs the trace of the phi^2 term
-                fout << mu_squared << "        " << sum/((double)(iter+1)*N*N*ntau) << "        " <<
+                fout << mu_squared << "        "  << sum/((double)(iter+1)*N*N*ntau) << "        " <<
                 jackknife(iter+1, sample)/((double)(iter+1)*N*N) << endl;
             }
+            /*if(mu_squared > -2.50 && mu_squared < -1.50){
+                    file << mu_squared << "        " << sum/((double)(iter+1)) << endl;
+            }*/
         }
+        cout << (double)naccept/niter << endl;
+        naccept = 0;
     }
     return 0;
 }
